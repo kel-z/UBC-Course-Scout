@@ -20,7 +20,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
-APP_NAME = 'UBC Course Scout v1.0'
+APP_NAME = 'UBC Course Scout v1.1'
 SAVE_PATH = 'course_data'
 URL_TEMPLATE = 'https://courses.students.ubc.ca/cs/courseschedule?' \
                'sesscd={}&pname=subjarea&tname=subj-section&sessyr={}&dept={}&course={}&section={}'
@@ -311,7 +311,6 @@ class UbcAppUi(QWidget):
             self.interval_input.setEnabled(True)
             self.timerButton.setText("Start")
         else:
-            asyncio.run(self.refresh_and_register())
             self.interval_input.setEnabled(False)
             self.timerButton.setText("Stop")
             try:
@@ -319,6 +318,7 @@ class UbcAppUi(QWidget):
             except ValueError:
                 self.interval_input.setText("60")
                 self.refreshTimer.start(60000)
+            asyncio.run(self.refresh_and_register())
 
     def reset_status(self):
         for x in range(len(data)):
@@ -428,6 +428,11 @@ class UbcAppUi(QWidget):
             status = x[2]['status']
             if not (status == 0 or status == 1 or status == 5):
                 to_refresh.append(x)
+
+        if not len(to_refresh) and self.refreshTimer.isActive():
+            self.toggle_timer()
+            fut.set_result([])
+            return
 
         for x in range(len(to_refresh)):
             task = asyncio.create_task(is_available(to_refresh[x][0], to_refresh[x][1]))
