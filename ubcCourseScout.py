@@ -2,6 +2,7 @@ import asyncio
 import json
 import random
 import sys
+import time
 import webbrowser
 from datetime import datetime
 
@@ -22,8 +23,12 @@ from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
 APP_NAME = 'UBC Course Scout v1.1'
 SAVE_PATH = 'course_data'
-URL_TEMPLATE = 'https://courses.students.ubc.ca/cs/courseschedule?' \
+URL_REGISTER = 'https://courses.students.ubc.ca/cs/courseschedule?' \
                'sesscd={}&pname=subjarea&tname=subj-section&sessyr={}&dept={}&course={}&section={}'
+URL_LOGIN_REDIRECT = 'https://cas.id.ubc.ca/ubc-cas/login?TARGET=https%3A%2F%2Fcourses.students.ubc.ca%2Fcs%2Fsecure' \
+              '%2Flogin%3FIMGSUBMIT.x%3D20%26IMGSUBMIT.y%3D13'
+URL_LOGIN = 'https://cas.id.ubc.ca/ubc-cas/login'
+URL_ADD_DROP = 'https://courses.students.ubc.ca/cs/courseschedule?tname=regi_sections&sessyr={}&sesscd={}&pname=regi_sections'
 
 RESPONSE_CODE = {
     0: 'Failed to register',
@@ -65,7 +70,7 @@ def load():
 
 
 def format_url(course):
-    return URL_TEMPLATE.format(course['session'], course['year'], course['dept'], course['course'], course['section'])
+    return URL_REGISTER.format(course['session'], course['year'], course['dept'], course['course'], course['section'])
 
 
 def register_format_url(course):
@@ -409,7 +414,7 @@ class UbcAppUi(QWidget):
         loop.create_task(self.refresh_sections(registrable))
         if await registrable and self.loggedIn:
             session = RegisterSession()
-            session.register(registrable.result(), [self.usr.text(), self.pw.text()])
+            session.login_and_register(registrable.result(), [self.usr.text(), self.pw.text()])
         self.update_model()
         save()
 
@@ -439,6 +444,7 @@ class UbcAppUi(QWidget):
             op.append(task)
 
         for x in op:
+            # time.sleep(0.25)
             await x
 
         registrable = []
@@ -462,14 +468,18 @@ class RegisterSession(object):
     def __init__(self):
         self.driver = webdriver.Edge(EdgeChromiumDriverManager().install())
 
-    def register(self, courses_to_register, login):
-        url = "https://cas.id.ubc.ca/ubc-cas/login?TARGET=https%3A%2F%2Fcourses.students.ubc.ca%2Fcs%2Fsecure" \
-              "%2Flogin%3FIMGSUBMIT.x%3D20%26IMGSUBMIT.y%3D13"
-        self.try_login(url, login)
+    def login_and_register(self, courses_to_register, login):
+        self.try_login(URL_LOGIN_REDIRECT, login)
 
         # Check for logout button to confirm login
         WebDriverWait(self.driver, 15).until(EC.presence_of_element_located((By.ID, 'cwl-logout')))
 
+        self.register(courses_to_register)
+
+        self.driver.quit()
+
+    def register(self, courses_to_register):
+        # Assume logged in
         to_register_urls = []
         for x in courses_to_register:
             to_register_urls.append(register_format_url(x[0]))
@@ -489,8 +499,6 @@ class RegisterSession(object):
                     courses_to_register[i][1]['response'] = 'No response when registering'
                     courses_to_register[i][1]['status'] = 0
 
-        self.driver.quit()
-
     def try_login(self, url, login):
         self.driver.get(url)
         elem = self.driver.find_elements_by_class_name("required")
@@ -501,13 +509,31 @@ class RegisterSession(object):
         elem.click()
 
     def is_valid_login(self, login):
-        url = "https://cas.id.ubc.ca/ubc-cas/login"
-        self.try_login(url, login)
+        self.try_login(URL_LOGIN, login)
         element = WebDriverWait(self.driver, 15) \
             .until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, "span, .alert-success")))
         result = element[0].text
         self.driver.quit()
         return "Log In Successful" in result
+
+    def drop_section(self, to_drop):
+        # Assume logged in
+        self.driver.get(URL_ADD_DROP.format(to_drop['year'], to_drop['session']))
+        value = ','.join([to_drop['dept'], to_drop['course'], to_drop['section']])
+        checkbox = self.driver.find_element_by_css_selector('input[value="{}"]'.format(value))
+        checkbox.click()
+        drop = self.driver.find_element_by_css_selector('input[value="Drop Selected Section"]')
+        drop.click()
+
+    def login_drop_and_register(self, login, to_drop, to_register):
+        self.try_login(URL_LOGIN_REDIRECT, login)
+
+        # Check for logout button to confirm login
+        WebDriverWait(self.driver, 15).until(EC.presence_of_element_located((By.ID, 'cwl-logout')))
+        print("loggedin")
+
+        self.drop_section(to_drop)
+        self.register([to_register])
 
 
 def main():
