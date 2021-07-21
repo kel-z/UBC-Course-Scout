@@ -7,7 +7,7 @@ import webbrowser
 from datetime import datetime
 
 import requests
-from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QStandardItemModel, QStandardItem, QColor, QPalette, QIntValidator
 from PyQt5.QtWidgets import QApplication, QHBoxLayout, QVBoxLayout, QComboBox, QLineEdit, \
     QCheckBox, QPushButton, QTableView, QHeaderView, QTabWidget, QGroupBox, QFormLayout
@@ -21,8 +21,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
-APP_NAME = 'UBC Course Scout v1.1'
-SAVE_PATH = 'course_data'
+APP_NAME = 'UBC Course Scout v1.2'
+COURSES_DAT_PATH = 'course_data'
+RULES_DAT_PATH = 'rules_data'
 URL_REGISTER = 'https://courses.students.ubc.ca/cs/courseschedule?' \
                'sesscd={}&pname=subjarea&tname=subj-section&sessyr={}&dept={}&course={}&section={}'
 URL_LOGIN_REDIRECT = 'https://cas.id.ubc.ca/ubc-cas/login?TARGET=https%3A%2F%2Fcourses.students.ubc.ca%2Fcs%2Fsecure' \
@@ -51,19 +52,30 @@ RESPONSE_COLOUR = {
 }
 
 data = []
+drop_rules = {}
 
 
 def save():
-    fp = open(SAVE_PATH, 'w')
+    fp = open(COURSES_DAT_PATH, 'w')
     json.dump(data, fp)
+    fp = open(RULES_DAT_PATH, 'w')
+    json.dump(drop_rules, fp)
     fp.close()
 
 
 def load():
     try:
-        fp = open(SAVE_PATH, 'r')
+        fp = open(COURSES_DAT_PATH, 'r')
         global data
         data = json.load(fp)
+        fp.close()
+    except FileNotFoundError:
+        pass
+
+    try:
+        fp = open(RULES_DAT_PATH, 'r')
+        global drop_rules
+        drop_rules = json.load(fp)
         fp.close()
     except FileNotFoundError:
         pass
@@ -104,7 +116,14 @@ def get_soup(course):
     return BeautifulSoup(r.content, "html.parser")
 
 
-def is_duplicate(course):
+def is_duplicate_rule(course, arr):
+    for x in arr:
+        if "".join(course.values()) == "".join(x.values()):
+            return True
+    return False
+
+
+def is_duplicate_course(course):
     for x in data:
         if "".join(course) == "".join(x[0].values()):
             return True
@@ -161,22 +180,30 @@ class UbcAppUi(QWidget):
 
         self.loggedIn = False
 
-        # Tabs setup
         self.model = QStandardItemModel()
+        self.drop_model = QStandardItemModel()
+        self.rules_model = QStandardItemModel()
+
+        # Tabs setup
         self.setWindowTitle(APP_NAME)
         self.container = QVBoxLayout()
 
         self.tabs = QTabWidget()
         self.main_tab = QWidget()
+        self.rules_tab = QWidget()
         self.settings_tab = QWidget()
-        self.tabs.addTab(self.main_tab, "App")
+        self.tabs.addTab(self.main_tab, "Add")
+        self.tabs.addTab(self.rules_tab, "Rules")
         self.tabs.addTab(self.settings_tab, "Settings")
 
         self.tab1 = QVBoxLayout()
         self.main_tab.setLayout(self.tab1)
 
         self.tab2 = QVBoxLayout()
-        self.settings_tab.setLayout(self.tab2)
+        self.rules_tab.setLayout(self.tab2)
+
+        self.tab3 = QVBoxLayout()
+        self.settings_tab.setLayout(self.tab3)
 
         self.container.addWidget(self.tabs)
         self.setLayout(self.container)
@@ -208,7 +235,7 @@ class UbcAppUi(QWidget):
         self.submit = QHBoxLayout()
         self.general = QCheckBox("Only general seats")
         self.general.setCheckState(2)
-        self.register = QCheckBox("Auto register")
+        self.register = QCheckBox("Auto-register")
         self.register.setCheckState(0)
         self.add = QPushButton("Add")
         self.add.clicked.connect(
@@ -246,7 +273,7 @@ class UbcAppUi(QWidget):
         self.bottom_layout = QHBoxLayout()
 
         self.remove = QPushButton("Remove")
-        self.remove.clicked.connect(lambda: self.remove_selected_sections(self.table))
+        self.remove.clicked.connect(self.remove_selected_sections)
 
         self.reset = QPushButton("Reset all status")
         self.reset.clicked.connect(self.reset_status)
@@ -265,7 +292,71 @@ class UbcAppUi(QWidget):
         self.last_refresh = QLabel("Last refresh: ")
         self.tab1.addWidget(self.last_refresh)
 
-        # Tab 2: Login Settings
+        # Tab 2: Drop section
+        self.drop_top = QVBoxLayout()
+        self.drop_add = QVBoxLayout()
+        self.drop_add.setAlignment(Qt.AlignTop)
+        self.drop_groupbox = QGroupBox("Add rule")
+        self.drop_groupbox.setLayout(self.drop_top)
+
+        self.drop_session = QHBoxLayout()
+        self.drop_combo = QComboBox()
+        self.drop_combo.addItems(["Winter", "Summer"])
+        self.drop_year = QLineEdit(placeholderText="Year")
+        self.drop_year.setValidator(QIntValidator())
+        self.drop_session.addWidget(QLabel("Session:", self), 0)
+        self.drop_session.addWidget(self.drop_combo, 1)
+        self.drop_session.addWidget(self.drop_year, 2)
+
+        self.drop_section = QHBoxLayout()
+        self.drop_dept = QLineEdit(placeholderText="Department")
+        self.drop_course = QLineEdit(placeholderText="Course #")
+        self.drop_course.setValidator(QIntValidator())
+        self.drop_sect = QLineEdit(placeholderText="Section")
+        self.drop_section.addWidget(QLabel("Section:", self), 0)
+        self.drop_section.addWidget(self.drop_dept, 1)
+        self.drop_section.addWidget(self.drop_course, 2)
+        self.drop_section.addWidget(self.drop_sect, 3)
+
+        self.drop_top.addLayout(self.drop_add)
+        self.tab2.addWidget(self.drop_groupbox)
+        self.drop_add.addLayout(self.drop_session)
+        self.drop_add.addLayout(self.drop_section)
+
+        # Tab 2: Select table
+        self.update_drop_model()
+        self.drop_table = QTableView()
+        self.drop_table.setModel(self.drop_model)
+        self.drop_table.horizontalHeader().setStretchLastSection(True)
+        self.drop_table.setSelectionBehavior(QTableView.SelectRows)
+        self.drop_table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.drop_table.resizeRowToContents(True)
+        self.drop_top.addWidget(self.drop_table)
+
+        self.add_rule_button = QPushButton("Add rule")
+        self.add_rule_button.clicked.connect(
+            lambda: self.add_rule([self.drop_combo.currentText()[0], self.drop_year.text(),
+                                   self.drop_dept.text().upper().strip(), self.drop_course.text().strip(),
+                                   self.drop_sect.text().upper()], self.drop_table))
+        self.drop_top.addWidget(self.add_rule_button)
+
+        # Tab 2: Rules table
+        self.rules_table = QTableView()
+        self.rules_table.setModel(self.rules_model)
+        self.rules_table.horizontalHeader().setStretchLastSection(True)
+        self.rules_table.setSelectionBehavior(QTableView.SelectRows)
+        # self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.rules_table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.rules_table.resizeRowToContents(True)
+        self.update_rules_model()
+
+        self.tab2.addWidget(self.rules_table)
+
+        self.remove_rule = QPushButton("Remove")
+        self.remove_rule.clicked.connect(self.remove_selected_rules)
+        self.tab2.addWidget(self.remove_rule)
+
+        # Tab 3: Login Settings
         self.settings = QVBoxLayout()
         self.groupBoxLogin = QGroupBox("CWL Login")
         self.login = QFormLayout()
@@ -283,7 +374,7 @@ class UbcAppUi(QWidget):
         self.login.addWidget(self.login_status)
         self.groupBoxLogin.setLayout(self.login)
 
-        # Tab 2: Refresh Timer
+        # Tab 3: Refresh Timer
         self.refresh = QVBoxLayout()
         self.groupBoxRefresh = QGroupBox("Automatic refresh timer")
         self.refresh_settings = QFormLayout()
@@ -294,13 +385,16 @@ class UbcAppUi(QWidget):
         self.timerButton = QPushButton("Start")
         self.timerButton.clicked.connect(self.toggle_timer)
         self.refresh_settings.addWidget(self.timerButton)
+        self.is_async = QCheckBox("Asynchronous refresh")
+        self.is_async.setCheckState(2)
+        self.refresh_settings.addWidget(self.is_async)
 
         self.groupBoxRefresh.setLayout(self.refresh_settings)
 
         self.refresh.addWidget(self.groupBoxRefresh)
 
-        self.tab2.addLayout(self.settings)
-        self.tab2.addLayout(self.refresh)
+        self.tab3.addLayout(self.settings)
+        self.tab3.addLayout(self.refresh)
 
         self.refreshTimer = QTimer()
         self.refreshTimer.timeout.connect(lambda: asyncio.run(self.refresh_and_register()))
@@ -341,6 +435,26 @@ class UbcAppUi(QWidget):
         if index.column() == 0:
             webbrowser.open(format_url(data[index.row()][0]))
 
+    def update_rules_model(self):
+        self.rules_model.clear()
+        self.rules_model.setHorizontalHeaderLabels(['Drop', 'Replace with'])
+        self.rules_table.setColumnWidth(0, 175)
+        self.rules_table.setColumnWidth(1, 150)
+        for x in range(len(drop_rules)):
+            arr = list(drop_rules.values())[x]
+            to_drop = QStandardItem('\n'.join(list(map(lambda course: ' '.join(course.values()), arr))))
+            self.rules_model.setItem(x, 0, to_drop)
+            to_register = QStandardItem(list(drop_rules.keys())[x])
+            self.rules_model.setItem(x, 1, to_register)
+
+    def update_drop_model(self):
+        self.drop_model.clear()
+        self.drop_model.setHorizontalHeaderLabels(['Replace with'])
+        for x in range(len(data)):
+            course_item = QStandardItem(' '.join(list(data[x][0].values())))
+            course_item.setEditable(False)
+            self.drop_model.setItem(x, course_item)
+
     def update_model(self):
         for x in range(0, len(data)):
             course_item = QStandardItem(' '.join(list(data[x][0].values())))
@@ -360,15 +474,53 @@ class UbcAppUi(QWidget):
             self.model.setItem(x, 3, auto_register)
             self.model.setItem(x, 1, is_registrable)
 
-    def remove_selected_sections(self, table):
-        rows = table.selectionModel().selectedRows()
-        for i in sorted(rows, reverse=True):
+    def remove_selected_rules(self):
+        selected = self.rules_table.selectionModel().selectedRows()
+        for x in selected:
+            rule = x.sibling(x.row(), 1).data()
+            del drop_rules[rule]
+        self.update_rules_model()
+        print(drop_rules)
+
+    def remove_selected_sections(self):
+        selected = self.table.selectionModel().selectedRows()
+        for i in sorted(selected, reverse=True):
             self.model.removeRow(i.row())
             del data[i.row()]
+        self.update_drop_model()
         save()
 
+    def add_rule(self, course, table):
+        selected = table.selectionModel().selectedRows()
+        try:
+            int(course[1])
+            str(course[2])
+            int(course[3])
+            str(course[4])
+
+            course_info = {
+                'session': course[0],
+                'year': course[1],
+                'dept': course[2],
+                'course': course[3],
+                'section': course[4]
+            }
+
+            for x in selected:
+                rule = x.sibling(x.row(), 0).data()
+                if rule in drop_rules:
+                    arr = drop_rules[rule]
+                    if not is_duplicate_rule(course_info, arr):
+                        arr.append(course_info)
+                else:
+                    drop_rules[rule] = [course_info]
+            print(drop_rules)
+            self.update_rules_model()
+        except ValueError:
+            print("Illegal values in input")
+
     def add_section(self, course, onlyGen, autoReg):
-        if not is_duplicate(course):
+        if not is_duplicate_course(course):
             try:
                 int(course[1])
                 str(course[2])
@@ -393,6 +545,7 @@ class UbcAppUi(QWidget):
                     'status': 4
                 }
                 data.append([course_info, pref, r])
+                self.update_drop_model()
                 self.update_model()
             except ValueError:
                 print("Illegal values in input")
@@ -443,9 +596,13 @@ class UbcAppUi(QWidget):
             task = asyncio.create_task(is_available(to_refresh[x][0], to_refresh[x][1]))
             op.append(task)
 
-        for x in op:
-            # time.sleep(0.25)
-            await x
+        if self.is_async.isChecked():
+            await asyncio.gather(*op)
+        else:
+            for x in op:
+                # Wait before sending each request
+                time.sleep(1)
+                await x
 
         registrable = []
         for x in range(len(to_refresh)):
@@ -480,11 +637,18 @@ class RegisterSession(object):
 
     def register(self, courses_to_register):
         # Assume logged in
+
         to_register_urls = []
         for x in courses_to_register:
             to_register_urls.append(register_format_url(x[0]))
 
         for i in range(len(to_register_urls)):
+
+            # Check if any sections need to be dropped first
+            key = " ".join(list(courses_to_register[i][0].values()))
+            if key in drop_rules:
+                self.drop_sections(drop_rules[key])
+
             self.driver.get(to_register_urls[i])
             try:
                 elem = self.driver.find_element_by_class_name("alert.alert-success")
@@ -516,24 +680,40 @@ class RegisterSession(object):
         self.driver.quit()
         return "Log In Successful" in result
 
-    def drop_section(self, to_drop):
+    def drop_sections(self, to_drop):
         # Assume logged in
-        self.driver.get(URL_ADD_DROP.format(to_drop['year'], to_drop['session']))
-        value = ','.join([to_drop['dept'], to_drop['course'], to_drop['section']])
-        checkbox = self.driver.find_element_by_css_selector('input[value="{}"]'.format(value))
-        checkbox.click()
-        drop = self.driver.find_element_by_css_selector('input[value="Drop Selected Section"]')
-        drop.click()
 
-    def login_drop_and_register(self, login, to_drop, to_register):
-        self.try_login(URL_LOGIN_REDIRECT, login)
+        # To handle sections with different sessions and years
+        sessions_dict = {}
 
-        # Check for logout button to confirm login
-        WebDriverWait(self.driver, 15).until(EC.presence_of_element_located((By.ID, 'cwl-logout')))
-        print("loggedin")
+        for section in to_drop:
+            key = section['year'] + ' ' + section['session']
+            if key in sessions_dict:
+                arr = sessions_dict[key]
+            else:
+                arr = []
+                sessions_dict[key] = arr
 
-        self.drop_section(to_drop)
-        self.register([to_register])
+            value = ','.join([section['dept'], section['course'], section['section']])
+            arr.append(value)
+
+        for session in list(sessions_dict.keys()):
+            x = session.split()
+            self.driver.get(URL_ADD_DROP.format(x[0], x[1]))
+
+            checked = 0
+
+            for value in sessions_dict[session]:
+                try:
+                    checkbox = self.driver.find_element_by_css_selector('input[value="{}"]'.format(value))
+                    checkbox.click()
+                    checked += 1
+                except NoSuchElementException:
+                    print("Could not find " + value)
+
+            if checked > 0:
+                drop = self.driver.find_element_by_css_selector('input[value="Drop Selected Section"]')
+                drop.click()
 
 
 def main():
