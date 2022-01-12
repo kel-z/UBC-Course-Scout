@@ -41,6 +41,9 @@ proceed to drop the course(s) specified in the rule immediately before registeri
 - [Selenium](https://pypi.org/project/selenium/) to facilitate automatic login and registration
 ## Changelog
 
+v1.2.1:
+- Rules tab will now update accordingly when the user removes a watch-listed section.
+
 v1.2:
 - Added a "rules" tab to facilitate switching courses.
     - The user can specify sections they are registered in so that they can be dropped before the tool registers in a section on the watch-list.

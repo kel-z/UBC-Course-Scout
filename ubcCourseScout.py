@@ -21,7 +21,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
-APP_NAME = 'UBC Course Scout v1.2'
+APP_NAME = 'UBC Course Scout v1.2.1'
 COURSES_DAT_PATH = 'course_data'
 RULES_DAT_PATH = 'rules_data'
 URL_REGISTER = 'https://courses.students.ubc.ca/cs/courseschedule?' \
@@ -116,16 +116,20 @@ def get_soup(course):
     return BeautifulSoup(r.content, "html.parser")
 
 
+def get_course_string(course):
+    return " ".join(course.values())
+
+
 def is_duplicate_rule(course, arr):
     for x in arr:
-        if "".join(course.values()) == "".join(x.values()):
+        if get_course_string(course) == get_course_string(x):
             return True
     return False
 
 
 def is_duplicate_course(course):
     for x in data:
-        if "".join(course) == "".join(x[0].values()):
+        if " ".join(course) == get_course_string(x[0]):
             return True
     return False
 
@@ -486,6 +490,10 @@ class UbcAppUi(QWidget):
         selected = self.table.selectionModel().selectedRows()
         for i in sorted(selected, reverse=True):
             self.model.removeRow(i.row())
+            course = get_course_string(data[i.row()][0])
+            if course in drop_rules:
+                del drop_rules[course]
+                self.update_rules_model()
             del data[i.row()]
         self.update_drop_model()
         save()
