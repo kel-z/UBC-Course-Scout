@@ -530,7 +530,6 @@ class UbcAppUi(QWidget):
             try:
                 int(course[1])
                 str(course[2])
-                int(course[3])
                 str(course[4])
 
                 course_info = {
