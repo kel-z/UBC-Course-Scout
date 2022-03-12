@@ -21,7 +21,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
-APP_NAME = 'UBC Course Scout v1.2.1'
+APP_NAME = 'UBC Course Scout v1.2.2'
 COURSES_DAT_PATH = 'course_data'
 RULES_DAT_PATH = 'rules_data'
 URL_REGISTER = 'https://courses.students.ubc.ca/cs/courseschedule?' \
