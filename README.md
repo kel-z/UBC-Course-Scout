@@ -3,42 +3,52 @@ A Python 3.8 program with a graphical user interface to aid with UBC course regi
 
 ![Add tab](Watchlist.PNG)
 ## About
-UBC Course Scout is a course registration tool that can automatically register for desired courses when a seat is available.
+UBC Course Scout is a course registration tool that can automatically register for desired sections when a seat is available.
 It uses web-scraping to find the number of seats for a given course section, and it can register in the section
-once a spot is available depending on the user's preferences.
+once a seat is available depending on the user's preferences.
 
 The program takes advantage of an automated browser to facilitate automatic registration.
 ## Adding a course to watch-list
-To add a course to the watch-list, the following info is required and can be entered into their respective boxes:
+To add a section to the watch-list, the following info is required and can be entered into their respective boxes:
 - Session _(e.g. Winter)_
 - Year _(e.g. 2021)_
 - Department _(e.g. CPSC)_
 - Course # _(e.g. 320)_
 - Section _(e.g. 101)_
 
-Once the course section is added, the user can specify whether to only consider the number of general seats remaining, and
+The user can also specify whether to only consider general seats, and
 if the program should automatically register in the section once it is available.
 ## Switching courses
 
 ![Rules tab](Rules.PNG)
 
-To facilitate automatically dropping one course for another, the user can optionally add a "rule".
+To facilitate automatically dropping one section for another, the user can optionally add a "rule".
+
+This is intended for situations such as when a user is unable to register in a section because it would exceed the
+maximum amount of credits for the term.
   
-To get started, the preferred course must first be added to the watch-list. Then, the user can specify which course(s) they
-want to drop once the watch-listed course is available, and it will be added to the rule-list.
+To get started, the preferred section must first be already added to the watch-list and then selected in the "Replace with" table.
+The user will then need to specify a section that they are currently registered in before pressing the add button. Added rules will be displayed
+in the bottom table and can be removed anytime.
 
-Once a watch-listed course is available, and the user has entered their CWL login, then the program will
-proceed to drop the course(s) specified in the rule immediately before registering.
+Once a watch-listed section with auto-register is available, the program will
+proceed to drop the sections(s) specified in the rule immediately before registering.
 
-**There is a small window of time between automatically dropping a course and registering in another, meaning that it is possible
-for someone to "snipe" your registration after the tool drops your section.**
+**Important things to consider:**
+
+- It is your responsibility to confirm beforehand that you are able to register in the section in normal circumstances (such as having enough
+  remaining credits _after_ dropping or satisfying all the pre-requisites for the course). **You don't want to find out when the registration fails
+  after dropping your section(s).**
+- Just like doing it manually, there is a small window between dropping a course and registering in another where someone can _snipe_ the available seat.
+  **Though the window is much slimmer when the process is automated, it is still possible for someone to take your place in between the two steps, resulting in a failed registration after
+  dropping your section(s).**
 
 **Use this feature at your own risk.**
 
 ## Notes
-- In order for the auto-registration feature to take effect, the user must enter and confirm their CWL login in the settings
+- In order for the auto-registration feature to take effect, the user must enter and test their CWL login in the settings
   tab.
-- Courses and rules added to the program will be saved as separate files in the same directory of the app.
+- Sections and rules added to the program will be saved as separate files in the same directory of the app.
     - For security reasons, the user's CWL login will NOT be saved to disk and will need to be entered again between
   sessions.
 - If the refresh timer is active and there are no more valid sections to monitor (e.g. all the sections are invalid or have been successfully registered in), the refresh timer will stop automatically.
@@ -59,7 +69,7 @@ v1.2.1:
 - Rules tab will now update accordingly when the user removes a watch-listed section.
 
 v1.2:
-- Added a "rules" tab to facilitate switching courses.
+- Added a "rules" tab to facilitate switching sections.
     - The user can specify to drop one of their registered sections before the tool registers in a section on the watch-list.
 - Cleaned up requirements.txt.
 - Added asynchrony to section refreshes.

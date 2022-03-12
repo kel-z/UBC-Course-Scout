@@ -254,7 +254,7 @@ class UbcAppUi(QWidget):
         self.top_layout.addLayout(self.submit)
 
         # Tab 1: Table
-        self.model.setHorizontalHeaderLabels(['Added courses', 'Status', 'Only general seats', 'Auto register'])
+        self.model.setHorizontalHeaderLabels(['Added courses', 'Status', 'Only general seats', 'Auto-register'])
         self.update_model()
         self.table = QTableView()
         self.table.setModel(self.model)
