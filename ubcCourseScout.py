@@ -21,7 +21,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
-APP_NAME = 'UBC Course Scout v1.2.2'
+APP_NAME = 'UBC Course Scout v1.2.3'
 COURSES_DAT_PATH = 'course_data'
 RULES_DAT_PATH = 'rules_data'
 URL_REGISTER = 'https://courses.students.ubc.ca/cs/courseschedule?' \
@@ -628,7 +628,7 @@ class UbcAppUi(QWidget):
 class RegisterSession(object):
 
     def __init__(self):
-        self.driver = webdriver.Edge(EdgeChromiumDriverManager().install())
+        self.driver = webdriver.Edge(EdgeChromiumDriverManager(version="98.0.1108.92").install())
 
     def login_and_register(self, courses_to_register, login):
         self.try_login(URL_LOGIN_REDIRECT, login)

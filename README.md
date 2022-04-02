@@ -62,6 +62,9 @@ proceed to drop the sections(s) specified in the rule immediately before registe
 - [Selenium](https://pypi.org/project/selenium/) for browser automation
 ## Changelog
 
+v1.2.3:
+- Set EdgeChromiumDriver to 98.0.1108.92.
+
 v1.2.2:
 - Removed int validator for course number to allow values such as 300A.
 
