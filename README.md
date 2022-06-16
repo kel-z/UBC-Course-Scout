@@ -62,6 +62,10 @@ proceed to drop the sections(s) specified in the rule immediately before registe
 - [Selenium](https://pypi.org/project/selenium/) for browser automation
 ## Changelog
 
+v1.2.4:
+- Change to ChromeDriver version 98.0.4758.102 with included binary.
+  https://sourceforge.net/projects/portableapps/files/Source/Google%20Chrome/Launcher/
+
 v1.2.3:
 - Set EdgeChromiumDriver to 98.0.1108.92.
 
