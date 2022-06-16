@@ -20,7 +20,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 
-APP_NAME = 'UBC Course Scout v1.2.4'
+APP_NAME = 'UBC Course Scout v1.2.5'
 
 # version 98.0.4758.102
 BINARY_PATH = ".\\GoogleChromePortable64\\App\\Chrome-bin\\chrome.exe"
@@ -138,6 +138,10 @@ def is_duplicate_course(course):
     return False
 
 
+class OutOfServiceException(Exception):
+    pass
+
+
 def get_seats(course):
     try:
         soup = get_soup(course)
@@ -151,6 +155,8 @@ def get_seats(course):
                 pass
         return seats
     except AttributeError:
+        if "Out of Service" in soup.find('div', attrs={'class': 'content expand'}).text:
+            raise OutOfServiceException()
         return False
     except requests.exceptions.ConnectionError:
         raise requests.exceptions.ConnectionError()
@@ -173,12 +179,14 @@ async def is_available(course, opts):
     try:
         seats = get_seats(course)
         if not seats:
-            return 5
+            return 5    # Invalid section
         if can_register(seats, opts):
-            return 2
-        return 3
+            return 2    # Can register
+        return 3        # Section full
     except requests.exceptions.ConnectionError:
-        return 6
+        return 6        # Connection closed error
+    except OutOfServiceException:
+        return 4        # Pending refresh
 
 
 class UbcAppUi(QWidget):
