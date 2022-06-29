@@ -4,7 +4,6 @@ import random
 import sys
 import time
 import webbrowser
-from datetime import datetime
 
 import requests
 from PyQt5.QtCore import QTimer, Qt
@@ -20,7 +19,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 
-APP_NAME = 'UBC Course Scout v1.2.5'
+APP_NAME = 'UBC Course Scout v1.2.6'
 
 # version 98.0.4758.102
 BINARY_PATH = ".\\GoogleChromePortable64\\App\\Chrome-bin\\chrome.exe"
@@ -34,6 +33,8 @@ URL_LOGIN_REDIRECT = 'https://cas.id.ubc.ca/ubc-cas/login?TARGET=https%3A%2F%2Fc
               '%2Flogin%3FIMGSUBMIT.x%3D20%26IMGSUBMIT.y%3D13'
 URL_LOGIN = 'https://cas.id.ubc.ca/ubc-cas/login'
 URL_ADD_DROP = 'https://courses.students.ubc.ca/cs/courseschedule?tname=regi_sections&sessyr={}&sesscd={}&pname=regi_sections'
+
+SLEEP_DURATION = 5
 
 RESPONSE_CODE = {
     0: 'Failed to register',
@@ -142,31 +143,45 @@ class OutOfServiceException(Exception):
     pass
 
 
+class InvalidSectionError(Exception):
+    pass
+
+
 def get_seats(course):
-    try:
-        soup = get_soup(course)
-        seats = {}
-        for x in soup.find('table', attrs={'class': '\'table'}).contents:
-            try:
-                seats[x.td.text[0]] = int(x.strong.text)
-            except AttributeError:
-                pass
-            except ValueError:
-                pass
-        return seats
-    except AttributeError:
-        if "Out of Service" in soup.find('div', attrs={'class': 'content expand'}).text:
+    soup = get_soup(course)
+
+    if not soup.find('table', attrs={'class': '\'table'}):
+        if "no longer offered" in soup.text:
+            raise InvalidSectionError("Section does not exist")
+
+        if "Sorry for" in soup.text:
+            print(":: CAPTCHA detected")
             raise OutOfServiceException()
-        return False
-    except requests.exceptions.ConnectionError:
-        raise requests.exceptions.ConnectionError()
+
+        if "Out of Service" in soup.text or "The requested resource" in soup.text or "Please wait" in soup.text or "error has occurred" in soup.text:
+            raise OutOfServiceException()
+
+        print(":: Unable to get info for " + get_course_string(course) + ", dumping soup...")
+        print(soup.text)
+        raise InvalidSectionError("Seat table not found")
+
+    seat_summary = {}
+    for x in soup.find('table', attrs={'class': '\'table'}).contents:
+        try:
+            # Set first word of each row as dict key
+            seat_summary[x.td.text.split()[0]] = int(x.strong.text)
+        except AttributeError:
+            pass
+        except ValueError:
+            pass
+    return seat_summary
 
 
 def can_register(seats, opts):
     try:
-        available = seats['G']
+        available = seats['General']
         if not opts['onlyGeneralSeats']:
-            available += seats['R']
+            available += seats['Restricted']
         if available > 0:
             return True
         else:
@@ -177,7 +192,9 @@ def can_register(seats, opts):
 
 async def is_available(course, opts):
     try:
+        print(":: Getting info for {}...".format(get_course_string(course)))
         seats = get_seats(course)
+        print(seats)
         if not seats:
             return 5    # Invalid section
         if can_register(seats, opts):
@@ -186,7 +203,14 @@ async def is_available(course, opts):
     except requests.exceptions.ConnectionError:
         return 6        # Connection closed error
     except OutOfServiceException:
+        print(":: Unable to access page")
         return 4        # Pending refresh
+    except InvalidSectionError as e:
+        print({
+            'course': course,
+            'reason': e.args[0]
+        })
+        return 5        # Invalid section
 
 
 class UbcAppUi(QWidget):
@@ -414,7 +438,7 @@ class UbcAppUi(QWidget):
         self.refreshTimer.timeout.connect(lambda: asyncio.run(self.refresh_and_register()))
 
     def clear_inputs(self):
-        to_clear = [self.year, self.dept, self.course, self.sect]
+        to_clear = [self.dept, self.course, self.sect]
         for x in to_clear:
             x.setText("")
 
@@ -594,6 +618,7 @@ class UbcAppUi(QWidget):
             data[x][1]['registerImmediately'] = self.model.item(x, 3).checkState() == 2
 
     async def refresh_sections(self, fut):
+        print("## Refresh started {}...".format(time.strftime("%m/%d/%Y %H:%M:%S")))
         op = []
         to_refresh = []
 
@@ -609,17 +634,19 @@ class UbcAppUi(QWidget):
             fut.set_result([])
             return
 
-        for x in range(len(to_refresh)):
-            task = asyncio.create_task(is_available(to_refresh[x][0], to_refresh[x][1]))
-            op.append(task)
-
         if self.is_async.isChecked():
+            for x in range(len(to_refresh)):
+                task = asyncio.create_task(is_available(to_refresh[x][0], to_refresh[x][1]))
+                op.append(task)
+
             await asyncio.gather(*op)
         else:
-            for x in op:
-                # Wait before sending each request
-                time.sleep(1)
-                await x
+            for x in range(len(to_refresh)):
+                task = asyncio.create_task(is_available(to_refresh[x][0], to_refresh[x][1]))
+                await task
+                op.append(task)
+                print(":: Waiting {} seconds...".format(SLEEP_DURATION))
+                time.sleep(SLEEP_DURATION)
 
         registrable = []
         for x in range(len(to_refresh)):
@@ -628,7 +655,7 @@ class UbcAppUi(QWidget):
             if op[x].result() == 2 and to_refresh[x][1]['registerImmediately']:
                 registrable.append([to_refresh[x][0], to_refresh[x][2]])
 
-        self.last_refresh.setText("Last refresh: " + str(datetime.now().strftime("%m/%d/%Y %H:%M:%S")))
+        self.last_refresh.setText("Last refresh: " + str(time.strftime("%m/%d/%Y %H:%M:%S")))
         fut.set_result(registrable)
 
     def closeEvent(self, QCloseEvent) -> None:
