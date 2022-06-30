@@ -62,6 +62,9 @@ proceed to drop the sections(s) specified in the rule immediately before registe
 - [Selenium](https://pypi.org/project/selenium/) for browser automation
 ## Changelog
 
+v1.2.7:
+- Improved logging.
+
 v1.2.6:
 - Fixed async and page checks that weren't working as intended.
 

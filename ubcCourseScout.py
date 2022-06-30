@@ -4,6 +4,7 @@ import random
 import sys
 import time
 import webbrowser
+import logging
 
 import requests
 from PyQt5.QtCore import QTimer, Qt
@@ -19,7 +20,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 
-APP_NAME = 'UBC Course Scout v1.2.6'
+APP_NAME = 'UBC Course Scout v1.2.7'
 
 # version 98.0.4758.102
 BINARY_PATH = ".\\GoogleChromePortable64\\App\\Chrome-bin\\chrome.exe"
@@ -58,6 +59,7 @@ RESPONSE_COLOUR = {
 
 data = []
 drop_rules = {}
+logging.basicConfig(filename='refresh.log', level=logging.INFO)
 
 
 def save():
@@ -155,15 +157,12 @@ def get_seats(course):
             raise InvalidSectionError("Section does not exist")
 
         if "Sorry for" in soup.text:
-            print(":: CAPTCHA detected")
-            raise OutOfServiceException()
+            raise OutOfServiceException("CAPTCHA detected")
 
         if "Out of Service" in soup.text or "The requested resource" in soup.text or "Please wait" in soup.text or "error has occurred" in soup.text:
-            raise OutOfServiceException()
+            raise OutOfServiceException("SSC not available")
 
-        print(":: Unable to get info for " + get_course_string(course) + ", dumping soup...")
-        print(soup.text)
-        raise InvalidSectionError("Seat table not found")
+        raise OutOfServiceException("Unable to get info for {}, dumping soup...\n{}".format(get_course_string(course), soup.text))
 
     seat_summary = {}
     for x in soup.find('table', attrs={'class': '\'table'}).contents:
@@ -192,9 +191,9 @@ def can_register(seats, opts):
 
 async def is_available(course, opts):
     try:
-        print(":: Getting info for {}...".format(get_course_string(course)))
+        logging.info("Getting info for {}...".format(get_course_string(course)))
         seats = get_seats(course)
-        print(seats)
+        logging.info(seats)
         if not seats:
             return 5    # Invalid section
         if can_register(seats, opts):
@@ -202,11 +201,11 @@ async def is_available(course, opts):
         return 3        # Section full
     except requests.exceptions.ConnectionError:
         return 6        # Connection closed error
-    except OutOfServiceException:
-        print(":: Unable to access page")
+    except OutOfServiceException as e:
+        logging.warning(e.args[0])
         return 4        # Pending refresh
     except InvalidSectionError as e:
-        print({
+        logging.error({
             'course': course,
             'reason': e.args[0]
         })
@@ -437,6 +436,8 @@ class UbcAppUi(QWidget):
         self.refreshTimer = QTimer()
         self.refreshTimer.timeout.connect(lambda: asyncio.run(self.refresh_and_register()))
 
+        logging.info("App started successfully {}".format(time.strftime("%m/%d/%Y %H:%M:%S")))
+
     def clear_inputs(self):
         to_clear = [self.dept, self.course, self.sect]
         for x in to_clear:
@@ -518,7 +519,7 @@ class UbcAppUi(QWidget):
             rule = x.sibling(x.row(), 1).data()
             del drop_rules[rule]
         self.update_rules_model()
-        print(drop_rules)
+        save()
 
     def remove_selected_sections(self):
         selected = self.table.selectionModel().selectedRows()
@@ -556,10 +557,10 @@ class UbcAppUi(QWidget):
                         arr.append(course_info)
                 else:
                     drop_rules[rule] = [course_info]
-            print(drop_rules)
             self.update_rules_model()
+            save()
         except ValueError:
-            print("Illegal values in input")
+            logging.error("Illegal values in input " + course)
 
     def add_section(self, course, onlyGen, autoReg):
         if not is_duplicate_course(course):
@@ -588,8 +589,9 @@ class UbcAppUi(QWidget):
                 data.append([course_info, pref, r])
                 self.update_drop_model()
                 self.update_model()
+                save()
             except ValueError:
-                print("Illegal values in input")
+                logging.error("Illegal values in input " + course)
         self.clear_inputs()
 
     def test_login(self, login):
@@ -618,7 +620,7 @@ class UbcAppUi(QWidget):
             data[x][1]['registerImmediately'] = self.model.item(x, 3).checkState() == 2
 
     async def refresh_sections(self, fut):
-        print("## Refresh started {}...".format(time.strftime("%m/%d/%Y %H:%M:%S")))
+        logging.info("Refresh started {}...".format(time.strftime("%m/%d/%Y %H:%M:%S")))
         op = []
         to_refresh = []
 
@@ -645,7 +647,6 @@ class UbcAppUi(QWidget):
                 task = asyncio.create_task(is_available(to_refresh[x][0], to_refresh[x][1]))
                 await task
                 op.append(task)
-                print(":: Waiting {} seconds...".format(SLEEP_DURATION))
                 time.sleep(SLEEP_DURATION)
 
         registrable = []
@@ -662,6 +663,7 @@ class UbcAppUi(QWidget):
         self.update_checked()
         save()
         QCloseEvent.accept()
+        logging.info("App exited successfully " + str(time.strftime("%m/%d/%Y %H:%M:%S")))
 
 
 class RegisterSession(object):
@@ -682,6 +684,7 @@ class RegisterSession(object):
         self.driver.quit()
 
     def register(self, courses_to_register):
+        logging.info("Attempting to register course(s)")
         # Assume logged in
 
         to_register_urls = []
@@ -692,22 +695,29 @@ class RegisterSession(object):
 
             # Check if any sections need to be dropped first
             key = " ".join(list(courses_to_register[i][0].values()))
+            logging.info("Checking {}...".format(key))
+
             if key in drop_rules:
+                logging.info("Drop rules found for " + key)
                 self.drop_sections(drop_rules[key])
 
             self.driver.get(to_register_urls[i])
+            logging.info("Opening " + to_register_urls[i])
             try:
                 elem = self.driver.find_element_by_class_name("alert.alert-success")
                 courses_to_register[i][1]['response'] = elem.get_attribute('innerText').strip('\n')
                 courses_to_register[i][1]['status'] = 1
+                logging.info("Successfully registered in " + key)
             except NoSuchElementException:
                 try:
                     elem = self.driver.find_element_by_class_name("alert.alert-error")
                     courses_to_register[i][1]['response'] = elem.get_attribute('innerText').strip('\n')
                     courses_to_register[i][1]['status'] = 0
+                    logging.error("Registration failed for " + key)
                 except NoSuchElementException:
                     courses_to_register[i][1]['response'] = 'No response when registering'
                     courses_to_register[i][1]['status'] = 0
+                    logging.error("No response when registering for " + key)
 
     def try_login(self, url, login):
         self.driver.get(url)
@@ -745,21 +755,26 @@ class RegisterSession(object):
 
         for session in list(sessions_dict.keys()):
             x = session.split()
+            logging.info("Opening drop section page")
             self.driver.get(URL_ADD_DROP.format(x[0], x[1]))
 
             checked = 0
 
             for value in sessions_dict[session]:
+                logging.info("Clicking drop checkbox for " + value)
                 try:
                     checkbox = self.driver.find_element_by_css_selector('input[value="{}"]'.format(value))
                     checkbox.click()
                     checked += 1
                 except NoSuchElementException:
-                    print("Could not find " + value)
+                    logging.error("Could not find drop checkbox for " + value)
 
             if checked > 0:
+                logging.info("Dropping selected sections")
                 drop = self.driver.find_element_by_css_selector('input[value="Drop Selected Section"]')
                 drop.click()
+            else:
+                logging.warning("No sections dropped")
 
 
 def main():
